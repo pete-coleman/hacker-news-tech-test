@@ -1,6 +1,6 @@
 @NewsAggregator_HostAddress = http://localhost:5248
 
-GET {{NewsAggregator_HostAddress}}/api/hackernews/stories/best?count=5
+GET {{NewsAggregator_HostAddress}}/api/hackernews/stories/best?count=-5
 Accept: application/json
 
 ###

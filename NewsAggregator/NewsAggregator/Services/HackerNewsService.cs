@@ -1,6 +1,9 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+﻿using NewsAggregator.Configuration;
 using NewsAggregator.Models;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
+using NewsAggregator.Exceptions;
 
 namespace NewsAggregator.Services
 {
@@ -9,46 +12,58 @@ namespace NewsAggregator.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<HackerNewsService> _logger;
         private readonly IMemoryCache _memoryCache;
+        private readonly HackerNewsOptions _config;
 
         private readonly JsonSerializerOptions serializerOptions = new(JsonSerializerDefaults.Web);
 
-        public HackerNewsService(HttpClient httpClient, ILogger<HackerNewsService> logger, IMemoryCache memoryCache) =>
-            (_httpClient, _logger, _memoryCache) = (httpClient, logger, memoryCache);
+        public HackerNewsService(HttpClient httpClient, ILogger<HackerNewsService> logger, IMemoryCache memoryCache, IOptionsSnapshot<HackerNewsOptions> config) =>
+            (_httpClient, _logger, _memoryCache, _config) = (httpClient, logger, memoryCache, config.Value);
 
         public async Task<IEnumerable<int>> GetBestStoryIds(int count)
         {
             _logger.LogInformation($"{nameof(GetBestStoryIds)} called with: {count}");
-            string endpoint = "beststories.json";
-            if (!_memoryCache.TryGetValue(endpoint, out IEnumerable<int>? data))
+            HackerNewsRequest? requestConfig = _config.Requests?[nameof(GetBestStoryIds)];
+            if (requestConfig == null || requestConfig.Endpoint == null)
             {
-                _logger.LogInformation($"{endpoint} not found in cache or has expired, requesting it");
-                MemoryCacheEntryOptions cacheEntryOptions = new MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromSeconds(10));
-
-                HttpRequestMessage request = new(HttpMethod.Get, "beststories.json");
-                data = await SendRequest<IEnumerable<int>>(request);
-                _memoryCache.Set("beststories.json", data, cacheEntryOptions);
+                throw new Exception($"Loading configuration for {nameof(GetBestStoryIds)} resulted in a null RequestConfig or Endpoint");
             }
 
-            return data?.Take(count) ?? throw new($"An error occured whilst loading data from beststories.json in {nameof(GetBestStoryIds)}");
+            if (!_memoryCache.TryGetValue(requestConfig.Endpoint, out IEnumerable<int>? data))
+            {
+                _logger.LogInformation($"{requestConfig.Endpoint} not found in cache or has expired, requesting it");
+                MemoryCacheEntryOptions cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromSeconds(requestConfig.Expiry));
+
+                HttpRequestMessage request = new(HttpMethod.Get, requestConfig.Endpoint);
+                data = await SendRequest<IEnumerable<int>>(request);
+                _memoryCache.Set(requestConfig.Endpoint, data, cacheEntryOptions);
+            }
+
+            return data?.Take(count) ?? throw new HackerNewsResultsException($"An error occured whilst loading data from {requestConfig.Endpoint} in {nameof(GetBestStoryIds)}");
         }
 
         public async Task<HackerNewsStory> GetStory(int id)
         {
             _logger.LogInformation($"{nameof(GetStory)} called with: {id}");
-            string endpoint = $"item/{id}.json";
+            HackerNewsRequest? requestConfig = _config.Requests?[nameof(GetStory)];
+            if (requestConfig == null || requestConfig.Endpoint == null)
+            {
+                throw new Exception($"Loading configuration for {nameof(GetStory)} resulted in a null RequestConfig or Endpoint");
+            }
+
+            string endpoint = string.Format(requestConfig.Endpoint, id);
             if (!_memoryCache.TryGetValue(endpoint, out HackerNewsStory? data))
             {
                 _logger.LogInformation($"{endpoint} not found in cache or has expired, requesting it");
                 MemoryCacheEntryOptions cacheEntryOptions = new MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromSeconds(300));
+                    .SetAbsoluteExpiration(TimeSpan.FromSeconds(requestConfig.Expiry));
 
                 HttpRequestMessage request = new(HttpMethod.Get, endpoint);
                 data = await SendRequest<HackerNewsStory>(request);
                 _memoryCache.Set(endpoint, data, cacheEntryOptions);
             }
 
-            return data ?? throw new($"An error occured whilst loading data from item/{id}.json in {nameof(GetStory)}");
+            return data ?? throw new HackerNewsResultsException($"An error occured whilst loading data from {requestConfig.Endpoint} in {nameof(GetStory)}");
         }
 
         private async Task<T?> SendRequest<T>(HttpRequestMessage request)

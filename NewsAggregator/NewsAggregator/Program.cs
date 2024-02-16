@@ -6,6 +6,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services
     .AddScoped<IHackerNewsService, HackerNewsService>()
+    .AddMemoryCache()
     .AddHttpClient<IHackerNewsService, HackerNewsService>(options =>
     {
         options.BaseAddress = new Uri("https://hacker-news.firebaseio.com/v0/");

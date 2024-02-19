@@ -1,6 +1,6 @@
 # HackerNews Tech Test
 
-A simple REST API build with .NET 8 that gets the top _n_ "best" stories from the Hacker News API and returns some metadata about those stories.
+A simple REST API built with .NET 8 that gets the top _n_ "best" stories from the Hacker News API and returns some metadata about those stories.
 
 ## Running the application
 
